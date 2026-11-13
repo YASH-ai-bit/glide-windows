@@ -1,0 +1,22 @@
+/artifacts/
+/legacy/
+
+# Generated native build outputs
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.idb
+*.pch
+
+# Local diagnostics, captures and preferences
+*.log
+*.bmp
+/settings.ini
+.env
+.env.*
+
+# Local editor state
+.vs/
+.vscode/
+*.user
