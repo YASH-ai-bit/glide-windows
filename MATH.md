@@ -1,4 +1,4 @@
-# Swipe and commit math — native 0.7
+# Swipe and commit math — native 0.8
 
 The design separates preparation, finger tracking, the commit decision and the final snap. Preparing a window never waits for commit intent.
 
@@ -44,34 +44,34 @@ For multi-page gestures, the intent rule operates on fractional travel. Let `d` 
 
 When another gesture catches an unfinished release, its visual base is the last submitted position while its logical starting page becomes the pending destination. A further same-direction flick advances one more app immediately; a reverse flick returns toward the previous destination. No intermediate focus handoff or endpoint is required. A short caught gesture can still complete the already pending switch. Explicit cancellation returns to the session's original app.
 
-## Finite snap
+## Release travel and braking
 
-Let `a` be the last submitted visual position, `b` the selected endpoint, `D = abs(b-a)`, and `v` the release velocity. Starting from the submitted position avoids jumping to an input sample that has not appeared yet. The initial duration in seconds is:
-
-```text
-T = clamp(0.060 + 0.160*sqrt(D) - 0.004*min(abs(v), 6), 0.055, 0.500)
-```
-
-For example, `D=0.6, |v|=2.5` gives about 174 ms; `D=0.03, v=0` gives about 88 ms. An already reached endpoint, or disabled animation, skips the motion curve. Presentation and focus confirmation still apply.
-
-For `u = clamp(elapsed/T, 0, 1)` and `delta = b-a`:
+Let `a` be the last submitted visual position, `b` the selected endpoint, `D = abs(b-a)`, and `v` the release velocity. Starting from the submitted position avoids jumping to an input sample that has not appeared yet. The release integrates a velocity profile with three phases: a short ramp, steady travel and a short brake. It does not ease across the whole remaining distance.
 
 ```text
-m = clamp(v*T/delta, -min(0.8, 0.10/abs(delta)), 2.8)
-position(u) = a + delta * ((-2*u³ + 3*u²) + m*(u³ - 2*u² + u))
+scale = sqrt(min(1, D / 0.16))
+ramp = 0.032 * scale
+brake = 0.028 * scale
+direction = sign(b - a)
+initialSpeed = max(v * direction, -0.025 / ramp)
+peakSpeed = max(4.8, initialSpeed)
+rampsDistance = (initialSpeed + peakSpeed) * ramp / 2 + peakSpeed * brake / 2
 ```
 
-The duration is then increased as needed to limit peak speed. The normalized derivative is:
+For sufficient remaining distance, the cruise duration is `(D - rampsDistance) / peakSpeed`. Otherwise the cruise is omitted and the peak is reduced to `(2*D - initialSpeed*ramp)/(ramp+brake)`. If that peak would be below the already forward-moving initial speed, braking begins immediately, with duration `2*D/initialSpeed`. This preserves a fast swipe's speed even very near the endpoint.
+
+The ramp interpolates velocity using `S(u) = 3*u² - 2*u³`. Position comes from its integral `I(u) = u³ - u⁴/2`:
 
 ```text
-g(u) = (3*m - 6)*u² + (6 - 4*m)*u + m
-peakSpeed = abs(delta)/T * max(abs(g(u)))
-speedLimit = max(6.5, abs(v))
+rampTravel(u) = initialSpeed * ramp * u + (peakSpeed - initialSpeed) * ramp * I(u)
+cruiseTravel(t) = peakSpeed * t
+brakeTravel(u) = peakSpeed * brake * (u - I(u))
+position = a + direction * accumulatedTravel
 ```
 
-The maximum is evaluated at both endpoints and the quadratic's interior vertex, when present. If the peak exceeds the limit, multiply `T` by `peakSpeed/speedLimit`, recompute `m`, and repeat (up to 16 iterations). This prevents a moderate flick from accelerating abruptly to cover most of the screen in a short tail, while allowing an already fast physical swipe to retain its momentum.
+Velocity and acceleration meet continuously at phase boundaries. Final velocity and acceleration are zero, with an exact endpoint and no spring tolerance to wait for. Ordinary initial velocity is preserved. Opposing velocity is bounded so its outward excursion stays below 1.25% of a page. Cruise speed is 4.8 viewport widths per second unless the finger was already moving faster; short travel uses a lower peak or immediate braking.
 
-This Hermite curve has an exact endpoint and zero final velocity. Reasonable initial velocity carries through; extreme tangents are bounded. Opposing momentum may continue briefly before reversing, with its excursion below 1.5% of a viewport. Elastic boundaries absorb outward momentum. There is no spring epsilon to wait for.
+For `D=0.6`, a stationary release takes 155 ms and a forward release at 2.5 widths/second takes about 147 ms. A stationary release with only `D=0.03` remaining takes about 26 ms. These are curve durations, before display scheduling and focus confirmation. An already reached endpoint, or disabled animation, skips the motion curve.
 
 Focus transfer starts in the final 35 ms of the curve. The cover stays visible for a further compositor-paced tick after submitting the exact endpoint, and is removed only after foreground/layout confirmation. Prepared neighbors are rolled back at completion, so a window still sliding away on cancellation does not resize or minimize underneath its live preview. Unresponsive applications can still delay their own layout or drawing; the utility cannot make another process render instantly.
 

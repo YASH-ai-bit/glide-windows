@@ -32,7 +32,18 @@ void unitTests() {
     check(intent.update(-.22,2)==0,"deliberate reversal cancels projected intent");
     check(intent.update(-.08,0)==0,"short stationary drag does not commit");
     ReleaseMotion almostDone; almostDone.begin(-.97,-1,0,0);
-    check(almostDone.duration()<.100,"nearly complete drag has no long release dwell");
+    check(almostDone.duration()<.040,"nearly complete drag has no long release dwell");
+    ReleaseMotion heldCommit; heldCommit.begin(-.4,-1,0,0);
+    check(heldCommit.value(.035)<-.48,"lifting a stationary committed drag promptly carries the outgoing page away");
+    check(heldCommit.duration()<.170,"stationary halfway commit does not have a long settling tail");
+    double cruiseA=(heldCommit.value(.070)-heldCommit.value(.060))/.010;
+    double cruiseB=(heldCommit.value(.100)-heldCommit.value(.090))/.010;
+    check(std::abs(cruiseA-cruiseB)<1e-8 && std::abs(cruiseA)>4,"middle of a committed slide travels steadily instead of easing throughout");
+    for(double distance:{.0003,.005,.03,.6,2.6}) for(double speed:{0.,2.,8.}) {
+        ReleaseMotion finish; finish.begin(-1+distance,-1,-speed,0);
+        if(speed) check(std::abs((finish.value(.0000001)-finish.value(0))/.0000001+speed)<.01,"even a fast near-end release preserves its incoming velocity");
+        check(std::abs(finish.value(finish.duration()-.0000001)+1)<1e-7,"braking meets the endpoint without a last-frame jump");
+    }
     RECT clipped{},clippedSource{};
     check(cropToRect({-50,0,1050,500},{0,0,1100,500},{400,0,1000,500},clipped,clippedSource) && clipped.left==400 && clippedSource.left==450,"oversized source is clipped to its page, preventing overlap");
     ReleaseMotion reverse; reverse.begin(-.4,0,-.4,10);
@@ -207,6 +218,13 @@ void integration() {
     double median=(timings[(timings.size()-1)/2]+timings[timings.size()/2])/2;
     std::cout<<"Release-to-focused-app median="<<median<<" ms; worst="<<timings.back()<<" ms\n";
     check(timings.back()<230,"release latency remains bounded");
+    activate(first.hwnd,GetForegroundWindow()); h.pump(40);
+    h.start(windows,0); h.transition.move(-.4,0); h.pump(90);
+    h.transition.release(0,false,now());
+    check(h.transition.destinationWindow()==second.hwnd,"held halfway drag retains its committed destination after lifting");
+    check(h.waitClosed() && GetForegroundWindow()==second.hwnd,"held halfway drag automatically carries through to the chosen window");
+    check(h.transition.lastReleaseMs<210,"held halfway commit finishes without the old extended ease");
+    std::cout<<"Held halfway commit release="<<h.transition.lastReleaseMs<<" ms\n";
     int current=GetForegroundWindow()==first.hwnd ? 0 : 1;
     h.start(windows,current); h.transition.move(-.4,-2); h.pump(35); h.transition.release(-2,false,now()); h.pump(35);
     check(GetForegroundWindow()==windows[current].hwnd,"outgoing app retains focus in the early release frames");

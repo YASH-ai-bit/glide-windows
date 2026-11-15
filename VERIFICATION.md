@@ -1,5 +1,26 @@
 # Native build verification
 
+## Native 0.8 — committed release without prolonged easing
+
+Checked on 2026-11-15 on the same single-display Windows 11 setup. The application and tests compiled without warnings.
+
+```text
+PASS: 5070 native assertions
+Minimized restore release: 173.79 ms
+Release-to-focused-app median=175.02 ms; worst=192.069 ms
+Held halfway commit release=174.427 ms
+Incoming layout ready after request=28.8786 ms; prepared before release=1; post-release resizes=0
+PASS: four-app chaining, long drags, fixed geometry, reverse flicks, bounded surfaces and full-queue wrapping
+Focus requests=27; denied=0; flash observer calibrated=1; fixture flashes=0
+PASS: live rendering, early fitting, cancellation, minimized policies, edges, regrab, focus and latency
+```
+
+The new fixture holds at 40% travel for 90 ms, then releases with zero velocity. It confirms that the pending switch commits automatically and reaches the chosen foreground app. Deterministic checks verify prompt travel after a stationary committed release, steady speed in the middle of that slide, short completion when already near the edge, initial velocity preservation for fast near-end releases, and continuity into the exact endpoint. The existing peak-speed, reverse-momentum, chaining and state-restoration checks also pass.
+
+The animation now integrates short acceleration and braking phases around steady travel. It preserves the rolling strip and endpoint presentation checks from 0.7. Recorded timings include display scheduling and focus confirmation; these fixtures do not establish subjective smoothness in other applications.
+
+Tested application: 267,776 bytes, SHA-256 `31E5E15637AEEF0E30933DB7149F1D5F61FFEB3FB42157496159D7BF2685F721`.
+
 ## Native 0.7 — rolling window strip
 
 Checked on 2026-11-15 on the same single-display Windows 11 setup. MSVC compiled the application and tests without warnings.

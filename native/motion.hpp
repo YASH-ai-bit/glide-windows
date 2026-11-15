@@ -133,37 +133,56 @@ inline double rawPosition(double displayed,double lower,double upper) {
     if(displayed>upper) { double d=std::min(displayed-upper,extent-.000001); return upper+extent*d/(extent-d); }
     return displayed;
 }
-// Finite Hermite motion with an exact endpoint. Opposing momentum can make a tiny,
-// bounded excursion before reversing; it never creates an endless spring tail.
+// Integrate a velocity profile: short smooth ramp, steady travel, short brake.
+// Committed travel does not spend the whole remaining distance easing to a stop.
 class ReleaseMotion {
-    double from=0,to=0,slope=0,start=0,length=0;
+    double from=0,to=0,direction=1,start=0,length=0;
+    double initial=0,peak=0,ramp=0,cruise=0,brake=0;
+    static double integratedEase(double u) { return u*u*u*(1-.5*u); }
 public:
     void begin(double position,double target,double velocity,double time,bool animated=true) {
         from=position; to=target; start=time;
         double distance=std::abs(to-from);
-        length=!animated || distance<.00025 ? 0 : clamp(.060+.160*std::sqrt(distance)-.004*std::min(std::abs(velocity),6.0),.055,.500);
-        // Bound the peak of the derivative, not just the duration. A short flick
-        // must not fast-forward a nearly full screen of remaining travel.
-        for(int iteration=0;iteration<16;iteration++) {
-            slope=distance<1e-9 ? 0 : clamp(velocity*length/(to-from),-std::min(.8,.10/distance),2.8);
-            if(!length) break;
-            double a=3*slope-6,b=6-4*slope,peak=std::abs(slope);
-            if(std::abs(a)>1e-9) {
-                double u=-b/(2*a);
-                if(u>0 && u<1) peak=std::max(peak,std::abs((a*u+b)*u+slope));
+        length=ramp=cruise=brake=0;
+        if(!animated || distance<.00025) return;
+        direction=to>from ? 1. : -1.;
+        double scale=std::sqrt(std::min(1.,distance/.16));
+        ramp=.032*scale; brake=.028*scale;
+        // Bound reverse travel to less than 1.25% of a page. Ordinary release
+        // velocity is preserved; fast forward swipes are never forced to slow first.
+        initial=std::max(velocity*direction,-.025/ramp);
+        peak=std::max(4.8,initial);
+        double rampsDistance=.5*(initial+peak)*ramp+.5*peak*brake;
+        if(distance>=rampsDistance) cruise=(distance-rampsDistance)/peak;
+        else {
+            double triangularPeak=(2*distance-initial*ramp)/(ramp+brake);
+            if(triangularPeak>=std::max(0.,initial)) peak=triangularPeak;
+            else {
+                // Already moving too quickly for a ramp: brake immediately over
+                // exactly the remaining distance, retaining the initial velocity.
+                peak=initial; ramp=0; brake=2*distance/initial;
             }
-            double speed=distance*peak/length;
-            double limit=std::max(6.5,std::abs(velocity));
-            if(speed<=limit+1e-6) break;
-            length*=speed/limit;
         }
+        length=ramp+cruise+brake;
     }
     double duration() const { return length; }
     bool done(double time) const { return time-start>=length; }
     double value(double time) const {
         if(length==0 || done(time)) return to;
-        double u=clamp((time-start)/length,0,1),u2=u*u,u3=u2*u;
-        return from+(to-from)*((-2*u3+3*u2)+slope*(u3-2*u2+u));
+        double elapsed=std::max(0.,time-start),travel=0;
+        if(ramp>0 && elapsed<ramp) {
+            double u=elapsed/ramp;
+            travel=initial*elapsed+(peak-initial)*ramp*integratedEase(u);
+        } else {
+            travel=.5*(initial+peak)*ramp;
+            elapsed-=ramp;
+            travel+=peak*std::min(elapsed,cruise);
+            if(elapsed>cruise) {
+                double u=clamp((elapsed-cruise)/brake,0,1);
+                travel+=peak*brake*(u-integratedEase(u));
+            }
+        }
+        return from+direction*travel;
     }
 };
 }

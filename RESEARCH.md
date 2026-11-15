@@ -26,7 +26,7 @@ KWin distinguishes active gestures from subsequent animation, updates gesture po
 
 Sources: [project](https://github.com/cesp99/smooth-swipe), [smoothswipe.cpp](https://github.com/cesp99/smooth-swipe/blob/main/src/smoothswipe.cpp), [springmotion.cpp](https://github.com/cesp99/smooth-swipe/blob/main/src/springmotion.cpp).
 
-The modification filters finger tracking with a stiff spring, preserves velocity into release and keeps the rendered position when a transition is interrupted. Its spring implementation stops according to position and velocity tolerances. Glide carries over the interruption and momentum concepts while using direct finger position and a finite cubic release. It catches the last submitted position and permits a small bounded continuation when momentum opposes the destination. No KWin or Smooth Swipe source is bundled with Glide.
+The modification filters finger tracking with a stiff spring, preserves velocity into release and keeps the rendered position when a transition is interrupted. Its spring implementation stops according to position and velocity tolerances. Glide carries over the interruption and momentum concepts while using direct finger position and a finite release profile. Version 0.8 integrates short smooth velocity ramps around steady travel. It catches the last submitted position and permits a small bounded continuation when momentum opposes the destination. No KWin or Smooth Swipe source is bundled with Glide.
 
 ## Windows integration
 

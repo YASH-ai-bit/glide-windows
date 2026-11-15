@@ -91,7 +91,7 @@ Position follows the fingers directly. Recent velocity predicts intent, and sepa
 
 The strip keeps its window order throughout a chain and loads neighboring live surfaces as needed. Catching an unfinished switch keeps the displayed position; another flick advances from the pending destination, so rapid swipes can reach the third, fourth or later app without settling at each one. A long drag can cross multiple pages too.
 
-The outgoing window keeps its size and slides alongside the incoming window, with each preview clipped to its own page. Release starts from the last submitted frame and uses a finite cubic curve with a bounded peak speed. Focus transfers near the end, and the final frame gets a compositor-paced tick before the cover disappears. Actual completion time also depends on display scheduling and the target application's response.
+The outgoing window keeps its size and slides alongside the incoming window, with each preview clipped to its own page. Release starts from the last submitted frame, ramps briefly into steady travel, then brakes near the edge. A committed window carries through even if you hold partway and lift with no remaining finger velocity. Focus transfers near the end, and the final frame gets a compositor-paced tick before the cover disappears. Actual completion time also depends on display scheduling and the target application's response.
 
 See [MATH.md](MATH.md) for the formulas and [RESEARCH.md](RESEARCH.md) for implementation references.
 
@@ -110,7 +110,7 @@ See [MATH.md](MATH.md) for the formulas and [RESEARCH.md](RESEARCH.md) for imple
 
 The integration suite creates temporary test applications and visibly switches between them. It checks live rendering, layout preparation before release, cancellation, minimized-window state, focus, interruption and taskbar flash events. One deliberate fixture flash calibrates the observer before measured transitions. Run this suite in an interactive desktop session; its fixtures close afterward.
 
-The recorded native 0.7 run passed **5,042 deterministic assertions** and the integration checks, including four-app rapid chaining, multi-page dragging, reverse flicks, full-queue wrapping, fixed preview geometry, no resize after release and no observed taskbar attention flashes during measured fixture transitions. These tests do not measure physical finger-to-display latency or guarantee the same behavior in every application. See [VERIFICATION.md](VERIFICATION.md) for methods and results.
+The recorded native 0.8 run passed **5,070 deterministic assertions** and the integration checks, including a held halfway commit, four-app rapid chaining, multi-page dragging, reverse flicks, full-queue wrapping, fixed preview geometry, no resize after release and no observed taskbar attention flashes during measured fixture transitions. These tests do not measure physical finger-to-display latency or guarantee the same behavior in every application. See [VERIFICATION.md](VERIFICATION.md) for methods and results.
 
 ## Development
 

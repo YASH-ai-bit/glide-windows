@@ -160,7 +160,7 @@ public:
         RegisterHotKey(window,1,MOD_CONTROL|MOD_ALT|MOD_NOREPEAT,'G'); RegisterHotKey(window,2,MOD_CONTROL|MOD_ALT|MOD_NOREPEAT,VK_ESCAPE);
         SetTimer(window,1,500,nullptr); setEnabled(nativeDisabled() && touchpad->connected()>0); refresh();
         ShowWindow(window,showControls ? SW_SHOWNORMAL : SW_HIDE); UpdateWindow(window);
-        log(L"Native 0.7 started; enabled="+std::to_wstring(enabled)+L"; includeMinimized="+std::to_wstring(settings.includeMinimized)+L"; wrap="+std::to_wstring(settings.wrapAround)+L"; fit="+std::to_wstring(settings.fitIncoming)+L"; sensitivity="+std::to_wstring(settings.sensitivity));
+        log(L"Native 0.8 started; enabled="+std::to_wstring(enabled)+L"; includeMinimized="+std::to_wstring(settings.includeMinimized)+L"; wrap="+std::to_wstring(settings.wrapAround)+L"; fit="+std::to_wstring(settings.fitIncoming)+L"; sensitivity="+std::to_wstring(settings.sensitivity));
     }
     ~Application() {
         if(transition) { transition->ended=nullptr; transition->finish(false); }
