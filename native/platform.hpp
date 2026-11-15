@@ -96,14 +96,6 @@ inline bool activate(HWND target,HWND expected) {
     if(result) clearAttention(target);
     return result;
 }
-inline RECT blendRect(const RECT& from,const RECT& to,double amount) {
-    auto blend=[&](LONG a,LONG b) { return LONG(std::lround(a+(b-a)*amount)); };
-    return {blend(from.left,to.left),blend(from.top,to.top),blend(from.right,to.right),blend(from.bottom,to.bottom)};
-}
-inline RECT scaleRect(RECT r,double scale) {
-    LONG x=LONG(std::lround(width(r)*(1-scale)/2)),y=LONG(std::lround(height(r)*(1-scale)/2));
-    InflateRect(&r,-x,-y); return r;
-}
 inline bool cropToRect(const RECT& dest,const RECT& source,const RECT& clip,RECT& clipped,RECT& part) {
     clipped={std::max(clip.left,dest.left),std::max(clip.top,dest.top),std::min(clip.right,dest.right),std::min(clip.bottom,dest.bottom)};
     if(width(clipped)<=0 || height(clipped)<=0 || width(dest)<=0 || height(dest)<=0) return false;

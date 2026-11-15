@@ -31,7 +31,6 @@ void unitTests() {
     check(intent.update(-.24,0)==1,"intent survives small velocity changes");
     check(intent.update(-.22,2)==0,"deliberate reversal cancels projected intent");
     check(intent.update(-.08,0)==0,"short stationary drag does not commit");
-    check(incomingFit(0)==0 && incomingFit(.28)==1 && incomingFit(.8)==1,"visual fitting finishes before the commit threshold");
     ReleaseMotion almostDone; almostDone.begin(-.97,-1,0,0);
     check(almostDone.duration()<.100,"nearly complete drag has no long release dwell");
     RECT clipped{},clippedSource{};
@@ -138,7 +137,7 @@ public:
         double until=now()+milliseconds/1000.; MSG m{};
         while(now()<until) { while(PeekMessageW(&m,nullptr,0,0,PM_REMOVE)) { TranslateMessage(&m); DispatchMessageW(&m); } Sleep(1); }
     }
-    void start(const std::vector<AppWindow>& windows,int index,bool wrap=false,bool fit=true) { check(transition.start(windows,index,wrap,fit),"transition starts"); clock->enable(true); }
+    void start(const std::vector<AppWindow>& windows,int index,bool wrap=false,bool fit=true) { sawEndpoint=false; check(transition.start(windows,index,wrap,fit),"transition starts"); clock->enable(true); }
     bool waitClosed(int limit=500) { double end=now()+limit/1000.; while(transition.active() && now()<end) pump(2); return !transition.active(); }
 };
 COLORREF pixel(int x,int y) { HDC dc=GetDC(nullptr); COLORREF color=GetPixel(dc,x,y); ReleaseDC(nullptr,dc); return color; }
@@ -250,7 +249,8 @@ void integration() {
     check(width(early)>width(mi.rcWork)*.98,"incoming preview is already fitted at the beginning of the drag");
     h.transition.move(-.31,0); h.pump(40); RECT fitted=h.transition.previewRectangle(2);
     RECT actual{}; DwmGetWindowAttribute(outsider.hwnd,DWMWA_EXTENDED_FRAME_BOUNDS,&actual,sizeof(actual));
-    check(EqualRect(&fitted,&actual)!=FALSE,"subtle fitting ends before release with matching real-window geometry");
+    check(EqualRect(&fitted,&actual)!=FALSE,"incoming page uses actual fitted geometry without a scale animation");
+    check(EqualRect(&early,&fitted)!=FALSE,"incoming geometry is identical at early and late reveal");
     UINT_PTR sizeBeforeRelease=UINT_PTR(GetPropW(outsider.hwnd,L"Glide.LastSize"));
     h.transition.release(0,false,now()); check(h.transition.lastPreparedBeforeRelease,"layout was ready before the user committed");
     double preparedMs=h.transition.lastPrepareMs;
@@ -266,6 +266,51 @@ void integration() {
     h.start(fitWindows,0,false,false); h.transition.move(-.2,0); h.pump(60);
     check(!IsZoomed(outsider.hwnd),"fit option can preserve normal window dimensions");
     h.transition.release(0,true,now()); check(h.waitClosed(),"unfitted preview cancels");
+    // Three rapid flicks must advance across four apps without closing the cover
+    // or snapping the visible strip to each intermediate destination.
+    std::vector<AppWindow> queue{first.app(),second.app(),third.app(),outsider.app()};
+    ShowWindow(third.hwnd,SW_SHOWMINNOACTIVE);
+    activate(first.hwnd,GetForegroundWindow()); h.pump(60);
+    check(IsIconic(third.hwnd)!=FALSE,"chain fixture starts minimized");
+    h.start(queue,0);
+    for(int page=1;page<=3;page++) {
+        if(page>1) {
+            double chainPosition=h.transition.renderedProgress();
+            h.transition.grab(now());
+            check(h.transition.progress()==chainPosition,"chained swipe preserves the displayed strip position");
+        }
+        h.transition.move(-.16,-3); h.pump(18); h.transition.release(-3,false,now());
+        check(h.transition.destinationPage()==page && h.transition.destinationWindow()==queue[page].hwnd,"rapid flick advances to a new app in queue order");
+        if(page<3) { h.pump(20); check(h.transition.active(),"chain accepts another swipe before settling"); }
+    }
+    check(h.waitClosed(1000) && GetForegroundWindow()==outsider.hwnd,"three rapid flicks reach the fourth app");
+    h.pump(40);
+    check(IsIconic(third.hwnd)!=FALSE,"passing a minimized app restores it after the chain ends");
+    // A single long gesture can also traverse multiple pages and render both
+    // neighbors at their shared boundary, with only a bounded set of surfaces.
+    activate(first.hwnd,GetForegroundWindow()); h.pump(40); h.start(queue,0);
+    h.transition.move(-2.4,-2);
+    RECT retained=h.transition.previewRectangle(1);
+    check(width(retained)>0 && h.transition.renderedProgress()==0,"new input retains the old visible surface until the replacement frame");
+    h.pump(100);
+    check(std::abs(h.transition.progress()+2.4)<1e-9,"long drag is not trapped at the first adjacent page");
+    check(h.transition.surfaceCount()<=4,"rolling strip bounds the live surface count");
+    check(GetGValue(pixel(int(w*.2),y))>140,"third app remains visible on the outgoing side of the strip");
+    check(GetRValue(pixel(int(w*.85),y))>140,"fourth app is visible on the incoming side of the strip");
+    h.transition.release(-2,false,now()); check(h.transition.destinationPage()==3,"long drag selects the fourth page");
+    check(h.waitClosed() && GetForegroundWindow()==outsider.hwnd,"long drag commits to the fourth app");
+    activate(first.hwnd,GetForegroundWindow()); h.pump(40); h.start(queue,0);
+    h.transition.move(-.16,-3); h.pump(20); h.transition.release(-3,false,now()); h.pump(20);
+    h.transition.grab(now()); h.transition.move(.16,3); h.pump(20); h.transition.release(3,false,now());
+    check(h.transition.destinationPage()==0,"reverse flick returns toward the previous queue destination");
+    check(h.waitClosed() && GetForegroundWindow()==first.hwnd,"rapid reverse keeps the original app");
+    h.start(queue,0,true); h.transition.move(-4.35,-2); h.pump(80); h.transition.release(-2,false,now());
+    check(h.transition.destinationPage()==5 && h.transition.destinationWindow()==second.hwnd,"rolling strip wraps beyond a complete queue traversal");
+    check(h.waitClosed() && GetForegroundWindow()==second.hwnd,"wrapped strip focuses the correct app");
+    activate(first.hwnd,GetForegroundWindow()); h.pump(40); h.start(queue,0);
+    h.transition.move(-2.3,-2); h.pump(60); h.transition.release(0,true,now());
+    check(h.waitClosed(1000) && GetForegroundWindow()==first.hwnd && IsIconic(third.hwnd),"canceling multi-page travel restores origin and minimized state");
+    std::cout<<"PASS: four-app chaining, long drags, fixed geometry, reverse flicks, bounded surfaces and full-queue wrapping\n";
     unsigned fixtureFlashes=0;
     for(HWND flashed:h.flashes) if(flashed==first.hwnd || flashed==second.hwnd || flashed==third.hwnd || flashed==outsider.hwnd) fixtureFlashes++;
     std::cout<<"Focus requests="<<focusDiagnostics.attempts<<"; denied="<<focusDiagnostics.denied<<"; flash observer calibrated="<<flashObserver<<"; fixture flashes="<<fixtureFlashes<<"\n";

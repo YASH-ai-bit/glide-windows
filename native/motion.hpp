@@ -120,8 +120,6 @@ public:
         return choice;
     }
 };
-inline double smoothStep(double x) { x=clamp(x,0,1); return x*x*(3-2*x); }
-inline double incomingFit(double reveal) { return smoothStep(reveal/.28); }
 // Bounded elastic resistance, continuous with ordinary dragging at either end.
 inline double dragPosition(double raw,double lower,double upper) {
     constexpr double extent=.12;

@@ -12,7 +12,7 @@ The project is experimental and currently supports one display on Windows 11. It
 - Incoming windows prepared before commit, with optional fitting to the screen.
 - Direct finger tracking, velocity-aware commits and a smooth, speed-limited release.
 - Elastic boundaries and optional wrapping between the last and first window.
-- Interruptible transitions: catch an animation and continue dragging.
+- A rolling queue: chain rapid swipes or drag across multiple windows without waiting for each switch to finish.
 - Optional minimized-window inclusion, with placement restored on cancellation.
 - A tray interface, keyboard shortcuts and saved preferences.
 - Focus handoff designed to avoid taskbar attention flashes.
@@ -59,6 +59,7 @@ Glide enables automatically when it detects a Precision Touchpad and the Windows
 | Complete a switch | Release after dragging far enough, or flick |
 | Return to the current window | Reverse direction or release a short, slow drag |
 | Catch an ongoing transition | Put three fingers down and continue dragging |
+| Advance through several apps quickly | Repeat the flick while the strip is still moving |
 | Cancel an active transition | `Esc` |
 | Enable or pause swipes | `Ctrl + Alt + G` |
 | Pause immediately | `Ctrl + Alt + Esc` |
@@ -78,7 +79,7 @@ Windows retain a stable order while Glide runs. Newly opened windows join the en
 
 Fitting changes the real incoming window's layout, not just its preview. Committing leaves it maximized, with its previous normal bounds available through Restore. Canceling returns it to its original placement. Non-resizable windows retain their dimensions.
 
-When minimized windows are included, only the window being revealed is restored. Canceling returns it to its original minimized state, including its maximize-on-restore preference.
+When minimized windows are included, revealed windows and the chosen destination are restored. At the end of a chain, passed-over windows return to their original placement; the final chosen window stays open. Canceling returns all temporarily restored windows to their original minimized state, including their maximize-on-restore preference.
 
 Preferences are stored in `%LOCALAPPDATA%\Glide\settings.ini`. Logs are stored in `%LOCALAPPDATA%\Glide\native.log`.
 
@@ -86,7 +87,9 @@ Preferences are stored in `%LOCALAPPDATA%\Glide\settings.ini`. Logs are stored i
 
 Glide registers neighboring live views on three-finger touch-down. The first horizontal movement starts preparing the incoming window, independently of the commit decision. Source geometry is refreshed every frame so the preview stays aligned with the application's layout.
 
-Position follows the fingers directly. Recent velocity predicts intent, and separate commit and cancellation thresholds prevent small fluctuations from changing the decision. A subtle scale transition finishes early in the drag.
+Position follows the fingers directly. Recent velocity predicts intent, and separate commit and cancellation thresholds prevent small fluctuations from changing the decision. Previews translate without a scale or zoom effect. Glide also disables the Windows show/hide transition on its own cover.
+
+The strip keeps its window order throughout a chain and loads neighboring live surfaces as needed. Catching an unfinished switch keeps the displayed position; another flick advances from the pending destination, so rapid swipes can reach the third, fourth or later app without settling at each one. A long drag can cross multiple pages too.
 
 The outgoing window keeps its size and slides alongside the incoming window, with each preview clipped to its own page. Release starts from the last submitted frame and uses a finite cubic curve with a bounded peak speed. Focus transfers near the end, and the final frame gets a compositor-paced tick before the cover disappears. Actual completion time also depends on display scheduling and the target application's response.
 
@@ -107,7 +110,7 @@ See [MATH.md](MATH.md) for the formulas and [RESEARCH.md](RESEARCH.md) for imple
 
 The integration suite creates temporary test applications and visibly switches between them. It checks live rendering, layout preparation before release, cancellation, minimized-window state, focus, interruption and taskbar flash events. One deliberate fixture flash calibrates the observer before measured transitions. Run this suite in an interactive desktop session; its fixtures close afterward.
 
-The recorded native 0.6 run passed **5,043 deterministic assertions** and the integration checks, including release continuity, stable outgoing geometry, no resize after release and no observed taskbar attention flashes during measured fixture transitions. These tests do not measure physical finger-to-display latency or guarantee the same behavior in every application. See [VERIFICATION.md](VERIFICATION.md) for methods and results.
+The recorded native 0.7 run passed **5,042 deterministic assertions** and the integration checks, including four-app rapid chaining, multi-page dragging, reverse flicks, full-queue wrapping, fixed preview geometry, no resize after release and no observed taskbar attention flashes during measured fixture transitions. These tests do not measure physical finger-to-display latency or guarantee the same behavior in every application. See [VERIFICATION.md](VERIFICATION.md) for methods and results.
 
 ## Development
 

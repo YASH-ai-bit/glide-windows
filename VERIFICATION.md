@@ -1,5 +1,27 @@
 # Native build verification
 
+## Native 0.7 — rolling window strip
+
+Checked on 2026-11-15 on the same single-display Windows 11 setup. MSVC compiled the application and tests without warnings.
+
+```text
+PASS: 5042 native assertions
+Minimized restore release: 207.005 ms
+Release-to-focused-app median=191.428 ms; worst=191.593 ms
+Incoming layout ready after request=27.4072 ms; prepared before release=1; post-release resizes=0
+PASS: four-app chaining, long drags, fixed geometry, reverse flicks, bounded surfaces and full-queue wrapping
+Focus requests=28; denied=0; flash observer calibrated=1; fixture flashes=0
+PASS: live rendering, early fitting, cancellation, minimized policies, edges, regrab, focus and latency
+```
+
+The new integration fixtures perform three short flicks before previous releases finish and confirm that each selects the next app, ending at the fourth window. Each catch preserves the last submitted position. A 2.4-page drag checks the third and fourth applications' pixels on opposite sides of the strip and confirms that the rendered surface count stays at four or fewer. Another check withholds presentation after that input and confirms the old visible surface remains registered. Reverse flicks, wrapping through an entire four-window queue, multi-page cancellation and restoration of passed-over minimized windows also pass.
+
+Early and later incoming preview rectangles match exactly after layout is ready: the former scale effect is gone. The cover now has its own DWM show/hide transitions disabled. No global animation preference or foreign window attribute is modified. One obsolete scale-function assertion was removed, accounting for the deterministic assertion count changing from 5,043 to 5,042; the new behavior is exercised by live integration checks.
+
+The timing figures above cover adjacent-window releases, not the duration of a multi-window chain. A chain accepts input before its intermediate destinations settle; final travel time still depends on the remaining distance. Automated fixture results establish ordering, continuity and state handling, but do not measure subjective smoothness or physical touch-to-display latency in third-party apps.
+
+Tested application: 268,800 bytes, SHA-256 `E364098D443363F9ED7D4814DF4390AA32EB4DD540DB36B6F858D33570889950`.
+
 ## Native 0.6 — outgoing transition
 
 Checked on 2026-11-15 with the same Windows 11, single-display setup and MSVC configuration described below. The application and test executable compiled without warnings.

@@ -32,6 +32,7 @@ The modification filters finger tracking with a stiff spring, preserves velocity
 
 - [DWM thumbnail overview](https://learn.microsoft.com/en-us/windows/win32/dwm/thumbnail-ovw): live window representations supplied by Windows.
 - [DwmFlush](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/nf-dwmapi-dwmflush): pacing updates against compositor presentation.
+- [DWMWA_TRANSITIONS_FORCEDISABLED](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute): reviewed on 2026-11-15 for disabling show/hide transitions on Glide's own overlay, avoiding a second animation on top of the strip. Other applications' DWM attributes are left untouched.
 - [SetWindowPlacement](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowplacement) and [WINDOWPLACEMENT](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-windowplacement): preserving normal bounds and minimized/maximized state.
 - [SetForegroundWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow) and [AttachThreadInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-attachthreadinput): constrained focus handoff between processes.
 - [Precision Touchpad collection](https://learn.microsoft.com/en-us/windows-hardware/design/component-guidelines/touchpad-windows-precision-touchpad-collection): parsing touch contacts and hybrid reports.
