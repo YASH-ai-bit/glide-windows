@@ -15,12 +15,13 @@ void unitTests() {
     check(destination(.6,0)==-1,"right swipe selects previous");
     for(double position:{-.95,-.7,-.3,-.05,.15,.7}) for(double target:{-1.,0.,1.}) for(double velocity:{-5.,0.,5.}) {
         ReleaseMotion motion; motion.begin(position,target,velocity,10);
-        check(motion.duration()<=.135,"release duration bounded at 135 ms");
+        check(motion.duration()<=.550,"release duration remains finite even for two-screen synthetic travel");
         double prior=position;
         for(int i=0;i<=20;i++) {
             double value=motion.value(10+motion.duration()*i/20.);
             check(value>=std::min(position,target)-.015 && value<=std::max(position,target)+.015,"opposing momentum has a bounded excursion");
             if(velocity*(target-position)>=0) check((value-prior)*(target-position)>=-1e-8,"forward release stays monotonic");
+            if(i) check(std::abs(value-prior)/(motion.duration()/20)<=std::max(6.5,std::abs(velocity))+.001,"release does not fast-forward beyond the speed budget");
             prior=value;
         }
         check(std::abs(motion.value(10+motion.duration()+.001)-target)<1e-12,"exact release endpoint");
@@ -32,7 +33,9 @@ void unitTests() {
     check(intent.update(-.08,0)==0,"short stationary drag does not commit");
     check(incomingFit(0)==0 && incomingFit(.28)==1 && incomingFit(.8)==1,"visual fitting finishes before the commit threshold");
     ReleaseMotion almostDone; almostDone.begin(-.97,-1,0,0);
-    check(almostDone.duration()<.060,"nearly complete drag has no long release dwell");
+    check(almostDone.duration()<.100,"nearly complete drag has no long release dwell");
+    RECT clipped{},clippedSource{};
+    check(cropToRect({-50,0,1050,500},{0,0,1100,500},{400,0,1000,500},clipped,clippedSource) && clipped.left==400 && clippedSource.left==450,"oversized source is clipped to its page, preventing overlap");
     ReleaseMotion reverse; reverse.begin(-.4,0,-.4,10);
     check(reverse.value(10.001)<-.4,"reverse release preserves initial momentum before turning");
     check(std::abs((reverse.value(10.00001)+.4)/.00001+.4)<.01,"initial velocity is continuous for a gentle reversal");
@@ -111,12 +114,17 @@ class Harness {
     static LRESULT CALLBACK proc(HWND w,UINT m,WPARAM p,LPARAM l) {
         auto self=reinterpret_cast<Harness*>(GetWindowLongPtrW(w,GWLP_USERDATA));
         if(m==WM_NCCREATE) { self=static_cast<Harness*>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams); SetWindowLongPtrW(w,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(self)); }
-        if(m==FrameMessage && self) { self->clock->pending=false; self->transition.tick(now()); return 0; }
+        if(m==FrameMessage && self) {
+            self->clock->pending=false; self->transition.tick(now());
+            if(self->transition.active() && self->transition.isSettling() && std::abs(self->transition.progress())==1) self->sawEndpoint=true;
+            return 0;
+        }
         if(self && m==self->shellMessage) { if(p==HSHELL_FLASH) self->flashes.push_back(reinterpret_cast<HWND>(l)); return 0; }
         return DefWindowProcW(w,m,p,l);
     }
 public:
     Transition transition;
+    bool sawEndpoint=false;
     std::vector<HWND> flashes;
     bool shellWatching=false;
     Harness() {
@@ -161,18 +169,30 @@ void integration() {
     MONITORINFO mi{sizeof(mi)}; GetMonitorInfoW(MonitorFromWindow(first.hwnd,MONITOR_DEFAULTTOPRIMARY),&mi);
     RECT viewport=h.transition.viewport(); check(EqualRect(&viewport,&mi.rcWork)!=FALSE,"normal app swipes preserve the taskbar work area");
     check(IsZoomed(second.hwnd)!=FALSE,"maximized restore state preserved");
+    RECT leaving=h.transition.previewRectangle(1),sourceBounds{};
+    DwmGetWindowAttribute(first.hwnd,DWMWA_EXTENDED_FRAME_BOUNDS,&sourceBounds,sizeof(sourceBounds));
+    check(EqualRect(&leaving,&sourceBounds)!=FALSE,"leaving page keeps its original size during dragging");
     int w=GetSystemMetrics(SM_CXSCREEN),y=GetSystemMetrics(SM_CYSCREEN)/2;
     check(blue(pixel(int(w*.9),y)),"restored incoming window renders live");
     SendMessageW(second.hwnd,SetColor,RGB(0,255,255),0); h.pump(60);
     COLORREF cyan=pixel(int(w*.9),y); check(GetBValue(cyan)>200 && GetGValue(cyan)>200,"restored app keeps rendering during swipe");
-    h.transition.release(0,true,now()); check(h.waitClosed(),"cancel completes"); h.pump(100);
+    h.transition.release(0,true,now()); h.pump(35);
+    check(h.transition.active() && !IsIconic(second.hwnd),"cancel keeps the departing neighbor live until it leaves the screen");
+    check(h.waitClosed(),"cancel completes"); h.pump(100);
     check(IsIconic(second.hwnd) && IsIconic(third.hwnd),"cancel re-minimizes temporary neighbors");
     check(GetForegroundWindow()==first.hwnd,"cancel keeps original app focused");
     WINDOWPLACEMENT after{sizeof(after)}; GetWindowPlacement(second.hwnd,&after);
     check(EqualRect(&beforeSecond.rcNormalPosition,&after.rcNormalPosition)!=FALSE,"cancel preserves window placement");
     check((after.flags&WPF_RESTORETOMAXIMIZED)==(beforeSecond.flags&WPF_RESTORETOMAXIMIZED),"cancel preserves maximize-on-restore flag");
     h.start(windows,0); h.transition.move(-.36,-2); h.pump(100);
-    h.transition.release(-2,false,now()); check(h.waitClosed(),"minimized selection completes"); h.pump(40);
+    double lastDrag=h.transition.renderedProgress();
+    h.transition.move(-.40,-2); // Input arrives after the last submitted drag frame.
+    h.transition.release(-2,false,now());
+    check(h.transition.progress()==lastDrag,"release starts at the submitted frame without jumping to unseen input");
+    h.pump(35); leaving=h.transition.previewRectangle(1);
+    check(h.transition.active() && EqualRect(&leaving,&sourceBounds),"outgoing window retains its size through release");
+    check(h.waitClosed(),"minimized selection completes"); h.pump(40);
+    check(h.sawEndpoint,"final page is submitted for a compositor cycle before cover removal");
     check(GetForegroundWindow()==second.hwnd && !IsIconic(second.hwnd),"selected minimized app is restored and focused");
     check(IsIconic(third.hwnd)!=FALSE,"unselected minimized app returns to taskbar");
     check(h.transition.lastReleaseMs<230,"complete restore/focus handoff under 230 ms");
@@ -190,6 +210,7 @@ void integration() {
     check(timings.back()<230,"release latency remains bounded");
     int current=GetForegroundWindow()==first.hwnd ? 0 : 1;
     h.start(windows,current); h.transition.move(-.4,-2); h.pump(35); h.transition.release(-2,false,now()); h.pump(35);
+    check(GetForegroundWindow()==windows[current].hwnd,"outgoing app retains focus in the early release frames");
     double displayed=h.transition.renderedProgress(); h.transition.grab(now()); double caught=h.transition.progress();
     check(std::abs(caught-displayed)<1e-12,"regrab catches the rendered position without extrapolating ahead");
     check(std::abs(caught)>.1,"regrab retains in-flight position");

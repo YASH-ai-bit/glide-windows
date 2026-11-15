@@ -41,6 +41,7 @@ class Transition {
     double started=0,released=0,base=0,position=0,paintedPosition=0;
     bool running=false,primed=false,settling=false,activationSent=false,animate=true;
     int selected=0,presented=0;
+    bool endpointSubmitted=false;
     ReleaseMotion motion;
     CommitIntent intent;
     HWND activated=nullptr;
@@ -60,9 +61,9 @@ class Transition {
     }
     RECT frame(int slot) {
         Prepared* p=state(apps[slot].hwnd);
-        RECT result=p && p->fit ? p->target : views[slot]->rectangle();
+        RECT result=slot==1 && p ? p->initial : p && p->fit ? p->target : views[slot]->rectangle();
         if(!animate) return result;
-        if(slot==1) return scaleRect(result,1-.006*smoothStep(std::abs(position)/.4));
+        if(slot==1) return result;
         double reveal=clamp(1-std::abs(position+slot-1),0,1);
         // The fitted page is present from its first visible pixel. Only a 1.2% lift
         // eases out during the first 28% of the drag, before the commit threshold.
@@ -166,7 +167,7 @@ public:
         if(running || !primed || GetForegroundWindow()!=apps[1].hwnd) return false;
         for(const auto& a:apps) if(a.hwnd && !a.valid()) { discard(); return false; }
         started=now(); released=0; selected=presented=0; intent.reset();
-        settling=activationSent=false; activated=nullptr; running=true; primed=false;
+        settling=activationSent=endpointSubmitted=false; activated=nullptr; running=true; primed=false;
         if(!paint()) { finish(false); return false; }
         ShowWindow(overlay,SW_SHOWNOACTIVATE); UpdateWindow(overlay); return true;
     }
@@ -176,7 +177,7 @@ public:
     void grab(double time) {
         if(!running) return;
         position=paintedPosition; base=rawPosition(position,lower(),upper());
-        started=time; settling=activationSent=false; selected=0; intent.reset();
+        started=time; settling=activationSent=endpointSubmitted=false; selected=0; intent.reset();
         HWND foreground=GetForegroundWindow();
         if(foreground!=apps[1].hwnd && ownsForeground(foreground)) activate(apps[1].hwnd,foreground);
     }
@@ -194,16 +195,17 @@ public:
         selected=(cancel || modifiers()) ? 0 : intent.update(position,speed);
         if(!apps[selected+1].hwnd) selected=0;
         if((position<lower() && speed<0) || (position>upper() && speed>0)) speed=0;
-        released=time; settling=true; activationSent=false;
+        // Start at the last submitted visual position, not an input sample that
+        // has never appeared on screen. Keep both pages on the same trajectory.
+        position=paintedPosition;
+        released=time; settling=true; activationSent=endpointSubmitted=false;
         motion.begin(position,-selected,speed,time,animate);
         auto chosen=state(apps[selected+1].hwnd);
         lastPreparedBeforeRelease=chosen && chosen->layoutReady();
         lastPrepareMs=chosen && chosen->readyAt ? (chosen->readyAt-chosen->requestedAt)*1000 : 0;
-        // Layout is prepared during drag. Release transfers focus immediately behind
-        // the cover, letting focus-dependent redraws overlap the whole short snap.
+        // Layout stays prepared, but focus changes only near the end of the slide.
+        // Do not roll back a still-visible outgoing preview at release.
         if(chosen && selected) chosen->prepare();
-        beginActivation(apps[selected+1].hwnd);
-        for(auto& p:prepared) if(p.app.hwnd!=apps[selected+1].hwnd) p.rollback();
     }
     void tick(double time) {
         if(!running) return;
@@ -211,11 +213,18 @@ public:
         for(const auto& a:apps) if(a.hwnd && !a.valid()) { finish(false); return; }
         if(!ownsForeground(GetForegroundWindow())) { finish(false); return; }
         prepareVisible();
-        if(settling) { position=motion.value(time); beginActivation(apps[selected+1].hwnd); }
+        if(settling) {
+            position=motion.value(time);
+            if(motion.done(time) || time-released>=std::max(0.,motion.duration()-.035))
+                beginActivation(apps[selected+1].hwnd);
+        }
         if(!running) return;
         if(!paint()) { finish(false); return; }
         presented++;
         if(settling && motion.done(time)) {
+            // DwmFlush paces the next tick. Give the submitted endpoint a full
+            // compositor opportunity before hiding the live outgoing surface.
+            if(!endpointSubmitted) { endpointSubmitted=true; return; }
             HWND target=apps[selected+1].hwnd;
             if(GetForegroundWindow()==target && targetPrepared()) {
                 lastReleaseMs=(time-released)*1000; clearAttention(target); finish(true);

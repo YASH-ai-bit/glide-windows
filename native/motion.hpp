@@ -143,10 +143,22 @@ public:
     void begin(double position,double target,double velocity,double time,bool animated=true) {
         from=position; to=target; start=time;
         double distance=std::abs(to-from);
-        // The remaining distance, rather than a fixed dwell, determines release time.
-        // A nearly completed drag settles in a few frames, a fast flick in about 90 ms.
-        length=!animated || distance<.00025 ? 0 : clamp(.040+.100*std::sqrt(distance)-.006*std::min(std::abs(velocity),6.0),.040,.135);
-        slope=distance<1e-9 ? 0 : clamp(velocity*length/(to-from),-std::min(.8,.10/distance),2.8);
+        length=!animated || distance<.00025 ? 0 : clamp(.060+.160*std::sqrt(distance)-.004*std::min(std::abs(velocity),6.0),.055,.500);
+        // Bound the peak of the derivative, not just the duration. A short flick
+        // must not fast-forward a nearly full screen of remaining travel.
+        for(int iteration=0;iteration<16;iteration++) {
+            slope=distance<1e-9 ? 0 : clamp(velocity*length/(to-from),-std::min(.8,.10/distance),2.8);
+            if(!length) break;
+            double a=3*slope-6,b=6-4*slope,peak=std::abs(slope);
+            if(std::abs(a)>1e-9) {
+                double u=-b/(2*a);
+                if(u>0 && u<1) peak=std::max(peak,std::abs((a*u+b)*u+slope));
+            }
+            double speed=distance*peak/length;
+            double limit=std::max(6.5,std::abs(velocity));
+            if(speed<=limit+1e-6) break;
+            length*=speed/limit;
+        }
     }
     double duration() const { return length; }
     bool done(double time) const { return time-start>=length; }

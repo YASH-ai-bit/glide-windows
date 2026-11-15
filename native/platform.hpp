@@ -104,12 +104,15 @@ inline RECT scaleRect(RECT r,double scale) {
     LONG x=LONG(std::lround(width(r)*(1-scale)/2)),y=LONG(std::lround(height(r)*(1-scale)/2));
     InflateRect(&r,-x,-y); return r;
 }
-inline bool cropRect(const RECT& dest,const RECT& source,int w,int h,RECT& clipped,RECT& part) {
-    clipped={std::max(0L,dest.left),std::max(0L,dest.top),std::min(LONG(w),dest.right),std::min(LONG(h),dest.bottom)};
+inline bool cropToRect(const RECT& dest,const RECT& source,const RECT& clip,RECT& clipped,RECT& part) {
+    clipped={std::max(clip.left,dest.left),std::max(clip.top,dest.top),std::min(clip.right,dest.right),std::min(clip.bottom,dest.bottom)};
     if(width(clipped)<=0 || height(clipped)<=0 || width(dest)<=0 || height(dest)<=0) return false;
     double sx=double(width(source))/width(dest),sy=double(height(source))/height(dest);
     part={source.left+LONG(std::lround((clipped.left-dest.left)*sx)),source.top+LONG(std::lround((clipped.top-dest.top)*sy)),source.left+LONG(std::lround((clipped.right-dest.left)*sx)),source.top+LONG(std::lround((clipped.bottom-dest.top)*sy))};
     return width(part)>0 && height(part)>0;
+}
+inline bool cropRect(const RECT& dest,const RECT& source,int w,int h,RECT& clipped,RECT& part) {
+    return cropToRect(dest,source,{0,0,w,h},clipped,part);
 }
 class LiveView {
     HTHUMBNAIL thumb=nullptr;
@@ -143,7 +146,10 @@ public:
         if(!thumb || !IsWindow(window)) return false;
         RECT dest=screenBounds; OffsetRect(&dest,offset-monitor.left,-monitor.top);
         DWM_THUMBNAIL_PROPERTIES props{}; props.dwFlags=DWM_TNP_VISIBLE;
-        props.fVisible=cropRect(dest,crop,width(monitor),height(monitor),props.rcDestination,props.rcSource);
+        // Each window belongs to a separate page, even if its native bounds
+        // extend outside the work area. Never paint over an adjacent page.
+        RECT page{std::max(0,offset),0,std::min(width(monitor),offset+width(monitor)),height(monitor)};
+        props.fVisible=cropToRect(dest,crop,page,props.rcDestination,props.rcSource);
         if(props.fVisible) { props.dwFlags=0x1f; props.opacity=255; props.fSourceClientAreaOnly=FALSE; }
         return SUCCEEDED(DwmUpdateThumbnailProperties(thumb,&props));
     }

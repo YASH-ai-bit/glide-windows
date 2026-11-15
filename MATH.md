@@ -1,4 +1,4 @@
-# Swipe and commit math — native 0.5
+# Swipe and commit math — native 0.6
 
 The design separates preparation, finger tracking, the commit decision and the final snap. Preparing a window never waits for commit intent.
 
@@ -24,7 +24,7 @@ S(u) = 3*u² - 2*u³
 scale = 0.988 + 0.012*S(u)
 ```
 
-The scale is exactly 1 by 28% travel, before the slow-drag commit threshold. This is a 1.2% visual lift, not a late resize. The outgoing scale decreases by at most 0.6% and returns to exactly 1 on cancellation. These effects are disabled when Windows client-area animation is disabled.
+The scale is exactly 1 by 28% travel, before the slow-drag commit threshold. This is a 1.2% visual lift, not a late resize. The outgoing window retains its initial rectangle throughout the drag and release; it translates without shrinking. Each preview is clipped to its own moving viewport so oversized native bounds cannot overlap the neighboring page. The incoming scale effect is disabled when Windows client-area animation is disabled.
 
 ## Commit intent
 
@@ -38,13 +38,13 @@ A next-window commit becomes eligible at `q < -0.30` with `p < -0.025`; previous
 
 ## Finite snap
 
-Let `a` be release position, `b` the selected endpoint, `D = abs(b-a)`, and `v` the release velocity. Duration in seconds is:
+Let `a` be the last submitted visual position, `b` the selected endpoint, `D = abs(b-a)`, and `v` the release velocity. Starting from the submitted position avoids jumping to an input sample that has not appeared yet. The initial duration in seconds is:
 
 ```text
-T = clamp(0.040 + 0.100*sqrt(D) - 0.006*min(abs(v), 6), 0.040, 0.135)
+T = clamp(0.060 + 0.160*sqrt(D) - 0.004*min(abs(v), 6), 0.055, 0.500)
 ```
 
-For example, `D=0.6, |v|=2.5` gives about 102 ms; `D=0.03, v=0` gives about 57 ms. An already reached endpoint, or disabled animation, completes immediately.
+For example, `D=0.6, |v|=2.5` gives about 174 ms; `D=0.03, v=0` gives about 88 ms. An already reached endpoint, or disabled animation, skips the motion curve. Presentation and focus confirmation still apply.
 
 For `u = clamp(elapsed/T, 0, 1)` and `delta = b-a`:
 
@@ -53,9 +53,19 @@ m = clamp(v*T/delta, -min(0.8, 0.10/abs(delta)), 2.8)
 position(u) = a + delta * ((-2*u³ + 3*u²) + m*(u³ - 2*u² + u))
 ```
 
+The duration is then increased as needed to limit peak speed. The normalized derivative is:
+
+```text
+g(u) = (3*m - 6)*u² + (6 - 4*m)*u + m
+peakSpeed = abs(delta)/T * max(abs(g(u)))
+speedLimit = max(6.5, abs(v))
+```
+
+The maximum is evaluated at both endpoints and the quadratic's interior vertex, when present. If the peak exceeds the limit, multiply `T` by `peakSpeed/speedLimit`, recompute `m`, and repeat (up to 16 iterations). This prevents a moderate flick from accelerating abruptly to cover most of the screen in a short tail, while allowing an already fast physical swipe to retain its momentum.
+
 This Hermite curve has an exact endpoint and zero final velocity. Reasonable initial velocity carries through; extreme tangents are bounded. Opposing momentum may continue briefly before reversing, with its excursion below 1.5% of a viewport. Elastic boundaries absorb outward momentum. There is no spring epsilon to wait for.
 
-Focus transfer begins as soon as release chooses the destination. The cover remains until the curve reaches its endpoint and foreground/layout confirmation succeeds, so focus-dependent painting overlaps the snap. Unresponsive applications can still delay their own layout or drawing; the utility cannot make another process render instantly.
+Focus transfer starts in the final 35 ms of the curve. The cover stays visible for a further compositor-paced tick after submitting the exact endpoint, and is removed only after foreground/layout confirmation. Prepared neighbors are rolled back at completion, so a window still sliding away on cancellation does not resize or minimize underneath its live preview. Unresponsive applications can still delay their own layout or drawing; the utility cannot make another process render instantly.
 
 ## Taskbar attention
 

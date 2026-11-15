@@ -10,7 +10,7 @@ The project is experimental and currently supports one display on Windows 11. It
 
 - Live compositor previews that continue updating during a swipe.
 - Incoming windows prepared before commit, with optional fitting to the screen.
-- Direct finger tracking, velocity-aware commits and a short release animation.
+- Direct finger tracking, velocity-aware commits and a smooth, speed-limited release.
 - Elastic boundaries and optional wrapping between the last and first window.
 - Interruptible transitions: catch an animation and continue dragging.
 - Optional minimized-window inclusion, with placement restored on cancellation.
@@ -88,7 +88,7 @@ Glide registers neighboring live views on three-finger touch-down. The first hor
 
 Position follows the fingers directly. Recent velocity predicts intent, and separate commit and cancellation thresholds prevent small fluctuations from changing the decision. A subtle scale transition finishes early in the drag.
 
-Release uses a finite cubic curve with a planned duration of **40-135 ms**. Focus transfer overlaps that animation. Actual completion time also depends on display scheduling and the target application's response.
+The outgoing window keeps its size and slides alongside the incoming window, with each preview clipped to its own page. Release starts from the last submitted frame and uses a finite cubic curve with a bounded peak speed. Focus transfers near the end, and the final frame gets a compositor-paced tick before the cover disappears. Actual completion time also depends on display scheduling and the target application's response.
 
 See [MATH.md](MATH.md) for the formulas and [RESEARCH.md](RESEARCH.md) for implementation references.
 
@@ -107,7 +107,7 @@ See [MATH.md](MATH.md) for the formulas and [RESEARCH.md](RESEARCH.md) for imple
 
 The integration suite creates temporary test applications and visibly switches between them. It checks live rendering, layout preparation before release, cancellation, minimized-window state, focus, interruption and taskbar flash events. One deliberate fixture flash calibrates the observer before measured transitions. Run this suite in an interactive desktop session; its fixtures close afterward.
 
-The recorded native 0.5 run passed **3,962 deterministic assertions** and the integration checks, including no resize after release and no observed taskbar attention flashes during measured fixture transitions. These tests do not measure physical finger-to-display latency or guarantee the same behavior in every application. See [VERIFICATION.md](VERIFICATION.md) for methods and results.
+The recorded native 0.6 run passed **5,043 deterministic assertions** and the integration checks, including release continuity, stable outgoing geometry, no resize after release and no observed taskbar attention flashes during measured fixture transitions. These tests do not measure physical finger-to-display latency or guarantee the same behavior in every application. See [VERIFICATION.md](VERIFICATION.md) for methods and results.
 
 ## Development
 

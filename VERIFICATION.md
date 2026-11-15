@@ -1,4 +1,25 @@
-# Native 0.5 build verification
+# Native build verification
+
+## Native 0.6 — outgoing transition
+
+Checked on 2026-11-15 with the same Windows 11, single-display setup and MSVC configuration described below. The application and test executable compiled without warnings.
+
+```text
+PASS: 5043 native assertions
+Minimized restore release: 222.672 ms
+Release-to-focused-app median=191.362 ms; worst=206.75 ms
+Incoming layout ready after request=28.1645 ms; prepared before release=1; post-release resizes=0
+Focus requests=18; denied=0; flash observer calibrated=1; fixture flashes=0
+PASS: live rendering, early fitting, cancellation, minimized policies, edges, regrab, focus and latency
+```
+
+New regression checks cover the release speed bound, clipping oversized previews to separate pages, unchanged outgoing bounds during both dragging and release, and starting release at the last submitted frame when newer input has not been rendered. The live fixture also verifies that the outgoing app retains focus early in the release, the endpoint remains active for another compositor-paced tick, and a temporarily restored neighbor stays live while sliding away on cancellation. Existing fitting, focus, minimized-state, interruption and taskbar-flash checks passed.
+
+The longer release compared with 0.5 is intentional: the previous short curve could accelerate abruptly across the remaining screen. The new curve distributes that travel over more frames and waits one further presentation tick before uncovering the real app. Preparation still starts during the drag, with no new resize at release. Timings measure release until foreground confirmation and completion; they do not measure physical input latency or establish subjective smoothness.
+
+Tested application: 264,192 bytes, SHA-256 `67326F88F2DB49EA8983AB91831DE1077B5B73D4F909D8CE593DF5B02689A58F`.
+
+## Native 0.5 — historical reference
 
 Reference build checked on 2026-11-13 on a Windows 11 laptop, build 26300, with a built-in Precision Touchpad and one display. Compiler configuration: MSVC x64, C++17, optimization `/O2`, static runtime `/MT`, warning level `/W4`.
 
